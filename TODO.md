@@ -9,3 +9,11 @@
 - Add mobile application to query kb (NaN)
 - The create kb database queries should be abstracted in some way (NaN)
 - Fix notepad (windows) hell with automatic extensions... (maybe not)
+
+# Find a way to load custom templates by artifact (maybe store it in db?) (Medium-Term)
+1. Add templates config
+    - default
+    - notable
+    - blog
+2. Add templates folders and handler to file template
+3. Add commands paramater template

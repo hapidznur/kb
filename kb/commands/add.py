@@ -20,6 +20,8 @@ import kb.db as db
 import kb.initializer as initializer
 import kb.filesystem as fs
 from kb.entities.artifact import Artifact
+from kb.template import load
+from kb.template import export
 
 
 def add(args: Dict[str, str], config: Dict[str, str]):
@@ -28,8 +30,8 @@ def add(args: Dict[str, str], config: Dict[str, str]):
 
     Arguments:
     args:           - a dictionary containing the following fields:
-                      file -> a list of files to add to kb
-                      title -> the title assigned to the artifact(s)
+                      file -> a list of files to add to kb (required)
+                      title -> the title assigned to the artifact(s) (required)
                       category -> the category assigned to the artifact(s)
                       tags -> the tags assigned to the artifact(s)
                       author -> the author to assign to the artifact
@@ -58,9 +60,9 @@ def add(args: Dict[str, str], config: Dict[str, str]):
     else:
         # Get title for the new artifact
         title = args["title"]
-
         # Assign a "default" category if not provided
         category = args["category"] or "default"
+        categories = []
 
         # Create "category" directory if it does not exist
         category_path = Path(config["PATH_KB_DATA"], category)
@@ -69,6 +71,14 @@ def add(args: Dict[str, str], config: Dict[str, str]):
         if not db.is_artifact_existing(conn, title, category):
             # If a file is provided, copy the file to kb directory
             # otherwise open up the editor and create some content
+            if args['template']:
+                for x in args["category"].split(","):
+                    categories.append(x)
+    
+                post = load(args['template'], title, categories, args["author"])
+                args["body"] = export(post)
+                title = title + ".md"
+
             artifact_path = str(Path(category_path, title))
             if args["body"]:
                 with open(artifact_path, "w+") as art_file:
