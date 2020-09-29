@@ -54,3 +54,7 @@ nosetests.xml
 # docker
 docker/data/*
 !docker/data/.gitkeep
+
+# VSCode
+.vscode/
+setting.json
