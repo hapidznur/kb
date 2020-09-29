@@ -105,6 +105,11 @@ def parse_args(args):
         help="Body of the artifact",
         type=str,
     )
+    add_parser.add_argument(
+        "-tp", "--template",
+        help="Template of artifact",
+        type=str,
+    )
 
     # edit parser
     edit_parser.add_argument(

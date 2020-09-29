@@ -74,7 +74,6 @@ def add(args: Dict[str, str], config: Dict[str, str]):
             if args['template']:
                 for x in args["category"].split(","):
                     categories.append(x)
-    
                 post = load(args['template'], title, categories, args["author"])
                 args["body"] = export(post)
                 title = title + ".md"
@@ -84,10 +83,9 @@ def add(args: Dict[str, str], config: Dict[str, str]):
                 with open(artifact_path, "w+") as art_file:
                     body = args["body"].replace("\\n", "\n")
                     art_file.write(body)
+                open_editor(config["EDITOR"], artifact_path)
             else:
-                shell_cmd = shlex.split(
-                    config["EDITOR"]) + [artifact_path]
-                call(shell_cmd)
+                open_editor(config["EDITOR"], artifact_path)
 
         new_artifact = Artifact(
             id=None, title=title, category=category,
@@ -95,6 +93,11 @@ def add(args: Dict[str, str], config: Dict[str, str]):
             tags=args["tags"],
             status=args["status"], author=args["author"])
         db.insert_artifact(conn, new_artifact)
+
+
+def open_editor(editor, artifact_path):
+    shell_cmd = shlex.split(editor) + [artifact_path]
+    call(shell_cmd)
 
 
 def validate(args):
