@@ -1,5 +1,5 @@
 # -*- encoding: utf-8 -*-
-# kb v0.1.5
+# kb v0.1.4
 # A knowledge base organizer
 # Copyright © 2020, gnc.
 # See /LICENSE for licensing information.
@@ -12,7 +12,12 @@ kb export command module
 """
 
 from typing import Dict
+import base64
+
+from flask import make_response
+
 from kb.actions.export import export_kb
+from kb.api.constants import MIME_TYPE
 
 
 def export(args: Dict[str, str], config: Dict[str, str]):
@@ -27,5 +32,11 @@ def export(args: Dict[str, str], config: Dict[str, str]):
                       the following keys:
                       PATH_KB           - the main path of KB
     """
+    fname = export_kb(args, config=config)
 
-    return (export_kb(args, config=config))
+    with open(fname, "rb") as export_file:
+        encoded_string = base64.b64encode(export_file.read())
+    export_content = '{"Export":"' + str(encoded_string) + '"}'
+    resp = make_response((export_content), 200)
+    resp.mimetype = MIME_TYPE['utf8']
+    return(resp)

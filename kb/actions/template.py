@@ -5,26 +5,32 @@
 # See /LICENSE for licensing information.
 
 """
-kb template command module
+kb template api module
 
-:Copyright: © 2020, gnc.
+:Copyright: © 2020, alshapton.
 :License: GPLv3 (see /LICENSE).
 """
 
 import shlex
 import sys
+import os
 import toml
 from pathlib import Path
 from subprocess import call
 from typing import Dict, List
-import kb.db as db
-import kb.initializer as initializer
-import kb.filesystem as fs
+import base64
+
+from flask import jsonify, make_response
+from werkzeug.utils import secure_filename
+
+from kb.api.constants import MIME_TYPE
 import kb.config as conf
+import kb.db as db
 from kb.entities.artifact import Artifact
+import kb.filesystem as fs
+import kb.initializer as initializer
 import kb.printer.template as printer
-from kb.actions.template import edit as edit_template
-from kb.actions.template import delete as delete_template
+
 
 def get_templates(templates_path: str) -> List[str]:
     """
@@ -38,7 +44,8 @@ def get_templates(templates_path: str) -> List[str]:
     """
     return fs.list_files(templates_path)
 
-def search(args: Dict[str, str], config: Dict[str, str]):
+
+# def search(args: Dict[str, str], config: Dict[str, str]):
     """
     Search templates installed in kb.
 
@@ -50,17 +57,8 @@ def search(args: Dict[str, str], config: Dict[str, str]):
                       PATH_KB_TEMPLATES     - the path to where the templates of KB
                                               are stored
     """
-    # template_list = fs.list_files(config["PATH_KB_TEMPLATES"])
-    template_list = get_templates(config["PATH_KB_TEMPLATES"])
-    if not template_list:
-        return
-
-    if args["query"]:
-        template_list = [x for x in template_list if args["query"] in x]
-    color_mode = not args["no_color"]
-    printer.print_template_search_result(template_list, color_mode)
-
-
+    # return(get_templates(config["PATH_KB_TEMPLATES"]))
+    
 
 def apply_on_set(args: Dict[str, str], config: Dict[str, str]):
     """
@@ -83,8 +81,9 @@ def apply_on_set(args: Dict[str, str], config: Dict[str, str]):
         status=args["status"],
         author=args["author"],
         is_strict=is_query_strict)
-
+    rows_updated = 0
     for artifact in rows:
+        rows_updated = rows_updated + 1
         updated_artifact = Artifact(
             id=artifact.id,
             title=artifact.title,
@@ -94,6 +93,7 @@ def apply_on_set(args: Dict[str, str], config: Dict[str, str]):
             status=artifact.status,
             template=args["template"])
         db.update_artifact_by_id(conn, artifact.id, updated_artifact)
+    return(rows_updated)
 
 
 def new(args: Dict[str, str], config: Dict[str, str]):
@@ -111,26 +111,35 @@ def new(args: Dict[str, str], config: Dict[str, str]):
                                                   is stored
                       EDITOR                    - the editor program to call
     """
-    template_path = str(Path(config["PATH_KB_TEMPLATES"]) / args["template"])
 
+    template_path = str(Path(config["PATH_KB_TEMPLATES"]) / args["template"])
+    print(template_path)
     if fs.is_file(template_path):
-        print("ERROR: The template you inserted corresponds to an existing one. "
-                "Please specify another name for the new template")
-        sys.exit(1)
+        resp_content = '{"Error":"' + "Template already exists" + '"}'
+        resp = make_response((resp_content), 409)
+        resp.mimetype = 'application/json'
+        return(resp)
+
+    #    print("ERROR: The template you inserted corresponds to an existing one. ",
+    #          "Please specify another name for the new template")
+    #    sys.exit(1)
 
     fs.create_directory(Path(template_path).parent)
-    # fs.copy_file(config["PATH_KB_DEFAULT_TEMPLATE"], template_path)
 
     with open(template_path, 'w') as tmplt:
         tmplt.write("# This is an example configuration template\n\n\n")
         tmplt.write(toml.dumps(conf.DEFAULT_TEMPLATE))
 
-    shell_cmd = shlex.split(
-        config["EDITOR"]) + [template_path]
-    call(shell_cmd)
+    # shell_cmd = shlex.split(
+    #    config["EDITOR"]) + [template_path]
+    # call(shell_cmd)
+    resp_content = '{"OK":"' + "Default template content added" + '"}'
+    resp = make_response((resp_content), 200)
+    resp.mimetype = 'application/json'
+    return(resp)
 
 
-def add(args: Dict[str, str], config: Dict[str, str]):
+def add(args: Dict[str, str], config: Dict[str, str], filecontent):
     """
     Add a new template to the templates available in kb.
 
@@ -143,12 +152,50 @@ def add(args: Dict[str, str], config: Dict[str, str]):
                       PATH_KB_TEMPLATES         - the path to where the templates of KB
                                                   are stored
     """
-    template_path = args["file"]
-    if args["title"]:
-        dest_path = str(Path(config["PATH_KB_TEMPLATES"]) / args["title"])
-    else:
-        dest_path = config["PATH_KB_TEMPLATES"]
-    fs.copy_file(template_path, dest_path)
+
+    # Get the filename
+    templates_path = Path(config["PATH_KB_TEMPLATES"])
+    template_path = str(Path(config["PATH_KB_TEMPLATES"]) / args["title"])
+    if fs.is_file(template_path):
+        resp_content = '{"Error":"' + "Template already exists" + '"}'
+        resp = make_response((resp_content), 409)
+        resp.mimetype = 'application/json'
+        return(resp)
+
+    filecontent.save(os.path.join(templates_path, args["title"]))
+    resp = jsonify({'OK': 'Template successfully uploaded'})
+    resp.status_code = 200
+    resp.mimetype = 'application/json'
+    return (resp)
+
+
+def update_template(title: str, config: Dict[str, str], filecontent):
+    """
+    Updates an existing template.
+
+    Arguments:
+    title:           - a string containing the title of the existing kb template
+    config:         - a configuration dictionary containing at least
+                      the following key:
+                      PATH_KB_TEMPLATES         - the path to where the templates of KB
+                                                  are stored
+    attachment      - The template file itself
+    """
+
+    # Get the filename
+    templates_path = Path(config["PATH_KB_TEMPLATES"])
+    template_path = str(Path(config["PATH_KB_TEMPLATES"]) + "/" + title)
+    if not fs.is_file(template_path):
+        resp_content = '{"Error":"' + "Template does not exist" + '"}'
+        resp = make_response((resp_content), 404)
+        resp.mimetype = MIME_TYPE['json']
+        return(resp)
+
+    filecontent.save(os.path.join(templates_path, title))
+    resp_content = '{"OK":"' + "Template successfully updated" + '"}'
+    resp = make_response((resp_content), 200)
+    resp.mimetype = MIME_TYPE['json']
+    return (resp)
 
 
 def delete(args: Dict[str, str], config: Dict[str, str]):
@@ -163,12 +210,34 @@ def delete(args: Dict[str, str], config: Dict[str, str]):
                       PATH_KB_TEMPLATES         - the path to where the templates of KB
                                                   are stored
     """
-    
-    results = delete_template(args, config)
-    if results == -404:
-        print("ERROR: The template you want to delete does not exist. "
-              "Please specify a valid template to edit or create a new one")
-        sys.exit(1)
+    template_name = (Path(config["PATH_KB_TEMPLATES"]) / args["title"])
+    if not fs.is_file(template_name):
+        return(-404)
+    else:
+        fs.remove_file(Path(template_name))
+        return(-200)
+
+
+def get_template(template, DEFAULT_CONFIG):
+    """
+    Retrieve a template
+
+    Arguments:
+    args:           - template name
+    config:         - a configuration dictionary containing at least
+                      the following keys:
+                      PATH_KB_TEMPLATES - directory where the templates are located
+    """
+
+    # Default response is an error
+    response = -404
+    template_name = (Path(DEFAULT_CONFIG["PATH_KB_TEMPLATES"]) / template)
+    if not fs.is_file(template_name):
+        return(response)
+
+    with open(template_name, "rb") as tp_file:
+        response = base64.b64encode(tp_file.read())
+    return(response)
 
 
 def edit(args: Dict[str, str], config: Dict[str, str]):
@@ -184,40 +253,13 @@ def edit(args: Dict[str, str], config: Dict[str, str]):
                                            are stored
                       EDITOR             - the editor program to call
     """
-    edit_template(args, config)
+    template_path = str(Path(config["PATH_KB_TEMPLATES"]) / args["template"])
 
-COMMANDS = {
-    'add': add,
-    'delete': delete,
-    'edit': edit,
-    'list': search,
-    'new': new,
-    'apply': apply_on_set,
-}
+    if not fs.is_file(template_path):
+        print("ERROR: The template you want to edit does not exist. "
+              "Please specify a valid template to edit or create a new one")
+        sys.exit(1)
 
-
-def template(args: Dict[str, str], config: Dict[str, str]):
-    """
-    Manage templates for kb.
-
-    Arguments:
-    args:           - a dictionary containing the following fields:
-                      template_command -> the sub-command to execute for templates
-                                          that can be: "add", "delete", "edit",
-                                          "list" or "new".
-                      file -> used if the command is add, representing the template
-                              file to add to kb
-                      template -> used if the command is "delete", "edit" or "new" 
-                                  to represent the name of the template
-                      query -> used if the command is "list"
-    config:         - a configuration dictionary containing at least
-                      the following keys:
-                      PATH_KB_DEFAULT_TEMPLATE - the path to the kb default template
-                      PATH_KB_TEMPLATES        - the path to kb templates
-                      EDITOR                   - the editor program to call
-    """
-
-    # Check initialization
-    initializer.init(config)
-
-    COMMANDS[args["template_command"]](args, config)
+    shell_cmd = shlex.split(
+        config["EDITOR"]) + [template_path]
+    call(shell_cmd)
