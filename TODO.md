@@ -26,3 +26,8 @@ No guarantees can be given that a specific feature will be included in a release
 - SQLite change 
 - Fix notepad (Windows) hell with automatic extensions...
 - Executable standalone - Pyinstaller
+
+
+## TODO
+- Set default editor as a choice
+- Set default file template if plain/text type
